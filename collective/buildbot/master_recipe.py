@@ -13,7 +13,9 @@ from collective.buildbot.recipe import BaseRecipe
 class Recipe(BaseRecipe):
     """zc.buildout recipe"""
 
-    public_html = os.path.dirname(buildbot.status.web.__file__)
+    public_html = os.path.join(
+        os.path.dirname(buildbot.status.web.__file__),
+        'files')
 
     def install(self):
         """Installer"""
@@ -30,7 +32,7 @@ class Recipe(BaseRecipe):
         if not os.path.isdir(public_html):
             os.mkdir(public_html)
 
-        for filename in ('index.html', 'classic.css', 'robots.txt'):
+        for filename in ('default.css', 'robots.txt'):
             if filename == 'classic.css':
                 destination = os.path.join(public_html, 'buildbot.css')
             else:
@@ -89,7 +91,7 @@ class Recipe(BaseRecipe):
         for k in ('url', 'project-url'):
             url = options[k]
 	    if not url.endswith('/'):
-                options[k] = url + '/'	
+                options[k] = url + '/'
 
         globs = dict(buildbot=options,
                      slaves=slaves)

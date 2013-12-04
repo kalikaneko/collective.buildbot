@@ -120,12 +120,6 @@ The recipe supports the following options:
     
     failing
 
-``email-zope-test-style`` (optional)
-
-  An option to set whether mails should be sent in a format that a specific
-  zope bot understands. More information can be found here:
-  http://docs.zope.org/zopetoolkit/process/buildbots.html
-
 ``build-sequence`` (optional)
 
   A newline separated sequence of shell commands executed on the build

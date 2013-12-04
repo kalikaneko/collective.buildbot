@@ -3,7 +3,7 @@ import os
 import time
 import types
 from twisted.python import log, runtime
-from buildbot.slave.commands import ShellCommandPP
+from buildslave.commands.shell import SlaveShellCommand
 from warnings import warn
 from twisted.internet import reactor
 
@@ -89,7 +89,7 @@ def _startCommand(self):
         self.finished(None, 0)
         return
 
-    self.pp = ShellCommandPP(self)
+    self.pp = SlaveShellCommand(self)
 
     if type(self.command) in types.StringTypes:
         if runtime.platformType  == 'win32':
@@ -200,23 +200,26 @@ def _startCommand(self):
     for w in self.logFileWatchers:
         w.start()
 
-from buildbot.slave import commands
-commands.ShellCommand._startCommand = _startCommand
+from buildslave import commands
+commands.shell.SlaveShellCommand._startCommand = _startCommand
 
 #
 # patching SVN so it can take username/password
 #
-from buildbot.slave.commands import SourceBase, getCommand, ShellCommand
+from buildslave.commands.base import SourceBaseCommand
+from buildslave.commands.utils import getCommand
+from buildslave.commands import svn
+#from buildslave.commands.shell import SlaveShellCommand
 
 def SVN_setup(self, args):
-    SourceBase.setup(self, args)
+    SourceBaseCommand.setup(self, args)
     self.vcexe = getCommand("svn")
     self.svnurl = args['svnurl']
     self.sourcedata = "%s\n" % self.svnurl
     self.username = args.get("username", None)
     self.password = args.get("password", None)
 
-commands.SVN.setup = SVN_setup
+svn.SVN.setup = SVN_setup
 
 def SVN_doVCUpdate(self):
     revision = self.args['revision'] or 'HEAD'
@@ -229,13 +232,13 @@ def SVN_doVCUpdate(self):
     if self.password:
         command += ['--password', self.password]
 
-    c = ShellCommand(self.builder, command, d,
+    c = SlaveShellCommand(self.builder, command, d,
                     sendRC=False, timeout=self.timeout,
                     keepStdout=True)
     self.command = c
     return c.start()
 
-commands.SVN.doVCUpdate = SVN_doVCUpdate
+svn.SVN.doVCUpdate = SVN_doVCUpdate
 
 def SVN_doVCFull(self):
     revision = self.args['revision'] or 'HEAD'
@@ -255,13 +258,13 @@ def SVN_doVCFull(self):
 
     command += [self.svnurl, self.srcdir]
 
-    c = ShellCommand(self.builder, command, d,
+    c = SlaveShellCommand(self.builder, command, d,
                     sendRC=False, timeout=self.timeout,
                     keepStdout=True)
     self.command = c
     return c.start()
 
-commands.SVN.doVCFull = SVN_doVCFull
+svn.SVN.doVCFull = SVN_doVCFull
 
 from buildbot import steps
 from buildbot.steps.source import Source

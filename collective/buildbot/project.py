@@ -7,7 +7,6 @@ from buildbot.process import factory
 from buildbot import steps
 from buildbot.steps.python import PyFlakes
 from buildbot.status import mail
-from buildbot.status.builder import Results
 from twisted.python import log
 
 from collective.buildbot.utils import split_option
@@ -100,10 +99,6 @@ class Project(object):
         self.email_notification_recipients = options.get('email_notification_recipients', '').split()
         self.mail_mode = options.get('mail_mode', 'failing')
         self.mail_lookup = options.get('mail_lookup', None)
-        # message formatter is later used as a named arg for MailNotifier
-        # If message_formatter is None, it uses the internal one
-        self.message_formatter = options.get('email_zope_test_style', False) \
-            and self.messageFormatter or None
 
         self.slave_names =  options.get('slave_names', '').split()
         self.vcs = options.get('vcs', 'svn')
@@ -170,8 +165,7 @@ class Project(object):
                         relayhost=self.mail_host,
                         mode=self.mail_mode,
                         sendToInterestedUsers=True,
-                        lookup=self.mail_lookup,
-                        messageFormatter=self.message_formatter))
+                        lookup=self.mail_lookup))
             except AssertionError:
                 log.msg('Error adding MailNotifier for project %s: '
                         'from: %s, to: %s' % (
@@ -244,7 +238,11 @@ class Project(object):
             try:
                 when = convert_cron_to_setting(cron)
                 name = 'Cron scheduler for %s at %s' % (self.name, cron)
-                self.schedulers.append(Nightly(name, self.builders(), *when))
+                self.schedulers.append(Nightly(
+                    name, self.builders(), *when,
+                    # XXX hack. Nightly now needs branch to be specified.
+                    # We should get this from a config para.
+                    branch="develop"))
 
             except (IndexError, ValueError, TypeError):
                 log.msg('Invalid cron definition for the cron '
@@ -376,77 +374,3 @@ class Project(object):
 
             c['builders'].append(builder)
 
-    # shameless copy of this: http://buildbot.afpy.org/ztk1.0dev/master.cfg
-    # thx ccomb
-    @staticmethod
-    def messageFormatter(mode, name, build, results, master_status):
-        """Provide a customized message to BuildBots's MailNotifier.
-        The last 80 lines of the log are provided as well as the changes
-        relevant to the build.
-
-        >>> class AllMock(object):
-        ...     def __init__(self):
-        ...         self.branch = 'HIT MY'
-        ...         self.revision = 0
-        ...         self.patch = None
-        ...     def getProjectName(self):
-        ...         return 'test'
-        ...     def getURLForThing(self, ignore):
-        ...         return 'http://test'
-        ...     def getReason(self):
-        ...         return 'Running tests'
-        ...     def getBuildbotURL(self):
-        ...         return 'http://buildbot'
-        ...     def getResponsibleUsers(self):
-        ...         return ['Oliver Clothesoff!', 'Call for Oliver Clothesoff!']
-        ...     def getSourceStamp(self):
-        ...        return self
-        >>> mocker = AllMock()
-        >>> SUCCESS, FAILURE, UNKNOWN = 0, 2, 3
-        >>> Project.messageFormatter(mocker, 'test', mocker, SUCCESS, mocker)
-        {'body': 'OK : test / test\\nBuild: http://test\\n\\n\\nBuild Reason: Running tests\\n\\n\\nBuild Source Stamp: [branch HIT MY] HEAD\\n\\n\\nBlamelist: Oliver Clothesoff!, Call for Oliver Clothesoff!\\n\\n\\nBuildbot: http://buildbot', 'type': 'plain', 'subject': 'OK : test / test'}
-        >>> Project.messageFormatter(mocker, 'test', mocker, FAILURE, mocker)['subject']
-        'FAILED : test / test'
-        >>> Project.messageFormatter(mocker, 'test', mocker, UNKNOWN, mocker)['subject']
-        'UNKNOWN : test / test'
-        """
-        result = Results[results]
-
-        limit_lines = 80
-        text = list()
-
-        # status required by zope-tests list
-        # http://docs.zope.org/zopetoolkit/process/buildbots.html
-        status = 'UNKNOWN'
-        if result == 'success':
-            status = 'OK'
-        if result == 'failure':
-            status = 'FAILED'
-
-        subject = '%s : %s / %s' % (status, master_status.getProjectName(), name)
-        text.append(subject)
-        text.append("Build: %s" % master_status.getURLForThing(build))
-        text.append('\n')
-        text.append("Build Reason: %s" % build.getReason())
-        text.append('\n')
-
-        source = ""
-        ss = build.getSourceStamp()
-        if ss.branch:
-            source += "[branch %s] " % ss.branch
-        if ss.revision:
-            source +=  ss.revision
-        else:
-            source += "HEAD"
-        if ss.patch:
-            source += " (plus patch)"
-        text.append("Build Source Stamp: %s" % source)
-        text.append('\n')
-        text.append("Blamelist: %s" % ", ".join(build.getResponsibleUsers()))
-        text.append('\n')
-        text.append("Buildbot: %s" % master_status.getBuildbotURL())
-        return {
-            'body': "\n".join(text),
-            'subject': subject,
-	    'type' : 'plain'
-            }

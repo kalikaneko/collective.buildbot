@@ -5,7 +5,9 @@ from buildbot.changes.pb import PBChangeSource
 from buildbot.buildslave import BuildSlave
 from buildbot.status import words, client
 
-from collective.buildbot.overrides import WebStatus
+from buildbot.status.web.baseweb import WebStatus
+#from collective.buildbot.overrides import WebStatus
+
 from collective.buildbot.project import Project
 from collective.buildbot.poller import Poller
 from collective.buildbot.utils import Registry
@@ -52,7 +54,7 @@ else:
 
 c['slaves'] = [BuildSlave(name, password, max_builds=max_builds,
                           notify_on_missing=[],
-                          missing_timeout=3600) 
+                          missing_timeout=3600)
                for name, password in config.items('slaves')]
 
 for name, klass in (('project', Project), ('poller', Poller)):
@@ -84,45 +86,76 @@ for filename in os.listdir(projects_dir):
 
 ######################################################
 # Status
-allowForce = False
-if config.has_option('buildbot', 'allow-force'):
-    allowForce = config.get('buildbot', 'allow-force') == 'true'
+#allowForce = False
+from buildbot.status.web import auth, authz
+from buildbot.status.web.auth import BasicAuth
 
-c['status'].append(WebStatus(http_port=wport, allowForce=allowForce))
+
+def canForceBuild(username, builder_status):
+    print "testing force for user ", username
+    if username == "test":
+        return True
+    else:
+        return False
+
+users = [('test', 'pass'), ]
+
+authz_cfg = authz.Authz(
+    # change any of these to True to enable; see the manual for more
+    # options
+    auth=BasicAuth(users),
+    gracefulShutdown=True,
+    forceBuild=canForceBuild,  # use this to test your slave once it is set up
+    forceAllBuilds=True,
+    pingBuilder=True,
+    stopBuild=True,
+    stopAllBuilds=False,
+    cancelPendingBuild=False,
+)
+
+
+# XXX fixme --- introduce these options in the config file.
+#if config.has_option('buildbot', 'allow-force'):
+    #allowForce = config.get('buildbot', 'allow-force') == 'true'
+
+print "APPENDING WEBSTATUS WITH PERMISSIONS ------"
+c['status'].append(WebStatus(http_port=wport, authz=authz_cfg))
 
 #IRC bot if one need it
-irc_host = irc_channels = irc_nickname = irc_password = '' 
+irc_host = irc_channels = irc_nickname = irc_password = ''
 if config.has_option('buildbot', 'irc-host') and \
    config.has_option('buildbot', 'irc-channels'):
-    
+
     irc_host = config.get('buildbot', 'irc-host')
     irc_channels = config.get('buildbot', 'irc-channels').split()
-    
+
     # in channel name chars after ':' should be used as password to this channel
     irc_channels = [chnl.replace(':', ' ') for chnl in irc_channels]
 
     if config.has_option('buildbot', 'irc-nickname'):
         irc_nickname = config.get('buildbot', 'irc-nickname')
-    else:    
+    else:
         irc_nickname = 'buildbot'
     if config.has_option('buildbot', 'irc-password'):
         irc_password = config.get('buildbot', 'irc-password')
 
-    irc = words.IRC(irc_host, irc_nickname, irc_channels, password=irc_password)
+    irc = words.IRC(
+        irc_host, irc_nickname, irc_channels, password=irc_password,
+        allowForce=True)
     c['status'].append(irc)
 
 # PBListener can be used for remote control
 listener_opts = {}
 if config.has_option('buildbot', 'listener-port'):
     listener_opts['port'] = config.get('buildbot', 'listener-port')
-    
+
     # user and passwd are optional so are send to constructor only
     # when this options was added in config
     if config.has_option('buildbot', 'listener-user'):
         listener_opts['user'] = config.get('buildbot', 'listener-user')
     if config.has_option('buildbot', 'listener-passwd'):
         listener_opts['passwd'] = config.get('buildbot', 'listener-passwd')
-        
+
     c['status'].append(client.PBListener(**listener_opts))
 
 ######################################################
